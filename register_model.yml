@@ -1,0 +1,55 @@
+trigger:
+  - none
+
+pool:
+  vmImage: ubuntu-20.04
+
+variables:
+  - group: BacRegressionModel
+  - name: ServiceConnection
+    value: ServiceConnectionBac
+  - name: training_min_nodes
+    value: 0
+  - name: training_max_nodes
+    value: 4
+
+stages:
+- stage: RegisterModel
+  displayName: Pipeline for register the model
+  jobs:
+    - job: ConnectMLStudio
+      timeoutInMinutes: 60
+      steps:
+      - checkout: self
+        path: s/
+      - template: /aml-cli/install-az-cli.yml
+      
+      - template: /aml-cli/install-aml-cli.yml
+
+      - template: /aml-cli/connect-to-workspace.yml
+
+      - template: /aml-cli/register-environment.yml
+        parameters:
+          build_type: conda
+          environment_name: bac-environment
+          environment_file: mlops/train/train-env.yml
+
+      - template: /aml-cli/create-compute.yml
+        parameters:
+          cluster_name: $(training_target)
+          size: $(training_target_sku)
+          min_instances: ${{ variables.training_min_nodes }}
+          max_instances: ${{ variables.training_max_nodes }}
+          cluster_tier: $(training_target_tier)
+
+      - template: /aml-cli/register-data.yml
+        parameters:
+          data_type: uri_file
+          data_name: train-data
+          data_file: mlops/train/data.yml
+
+      - template: /aml-cli/run-pipeline.yml
+        parameters:
+          pipeline_file: mlops/train/pipeline.yml
+          experiment_name: $(environment)_train_$(Build.SourceBranchName)
+          display_name: $(environment)_run_$(Build.BuildID)
